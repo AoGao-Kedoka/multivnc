@@ -70,7 +70,9 @@ fixup_bundle(\"${APPS}\"   \"\"   \"${DIRS}\")
 endif(APPLE)
 
 if(WIN32)
+  file(GLOB DLLS ${CMAKE_CURRENT_BINARY_DIR}/src/Release/*.dll)
   install(TARGETS multivnc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES ${DLLS} DESTINATION ./bin)
   install(FILES README.md AUTHORS CHANGELOG.md DESTINATION .)
 endif(WIN32)
 

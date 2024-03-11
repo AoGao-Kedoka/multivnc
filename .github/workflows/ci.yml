@@ -37,9 +37,9 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake ${{ steps.vcpkg.outputs.vcpkg-cmake-config }} ..
-          cmake --build .
-          cpack -V -C Debug
+          cmake ${{ steps.vcpkg.outputs.vcpkg-cmake-config }} -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build . --config Release
+          cpack -V -C Release
       - name: Archive Ubuntu Build Artifacts
         if: ${{ matrix.os == 'ubuntu-latest' }}
         uses: actions/upload-artifact@v3
