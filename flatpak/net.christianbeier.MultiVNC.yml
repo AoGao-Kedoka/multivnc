@@ -1,6 +1,6 @@
 id: net.christianbeier.MultiVNC
 runtime: org.gnome.Platform # using GNOME since it contains libsecret already built
-runtime-version: '45'
+runtime-version: '46'
 sdk: org.gnome.Sdk
 command: multivnc
 finish-args:
@@ -33,10 +33,12 @@ modules:
       - /share/aclocal
     sources:
       - type: archive
-        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.4/wxWidgets-3.2.4.tar.bz2
-        sha1: 1fa54302c7ef6c86fa4311d303abd79a85b127a5
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6.tar.bz2
+        sha1: 44371dfdcc96a0e3d5e03d2d726470f645035619
   - name: multivnc
     buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
     sources:
       - type: dir
         path: ..

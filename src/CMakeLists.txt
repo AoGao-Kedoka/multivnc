@@ -1,7 +1,7 @@
 #
 # dependencies
 #
-find_package(wxWidgets 3.0 REQUIRED core base net adv qa)
+find_package(wxWidgets 3.1.6 REQUIRED core base net adv qa)
 include(${wxWidgets_USE_FILE})
 include_directories(
     ${CMAKE_BINARY_DIR}
@@ -32,7 +32,9 @@ SET(multivnc_SRCS
 
 if(APPLE)
     set(executable_name MultiVNC)
-    set(MACOSX_BUNDLE_COPYRIGHT "© Christian Beier (multivnc@christianbeier.net), 2009-2023")
+    set(MACOSX_BUNDLE_BUNDLE_NAME "MultiVNC")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "net.christianbeier.MultiVNC")
+    set(MACOSX_BUNDLE_COPYRIGHT "© Christian Beier (multivnc@christianbeier.net), 2009-2024")
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
     set(MACOSX_BUNDLE_ICON_FILE icon.icns)
     set(multivnc_SRCS ${multivnc_SRCS} icon.icns)
@@ -43,9 +45,6 @@ add_executable(${executable_name} WIN32 MACOSX_BUNDLE ${multivnc_SRCS})
 
 target_link_libraries(${executable_name} MultiVNCgui ${wxWidgets_LIBRARIES} wxservdisc vncclient)
 
-if(APPLE AND wxWidgets_VERSION_STRING LESS 3.1)
-    set_target_properties(${executable_name} PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in)
-endif(APPLE AND wxWidgets_VERSION_STRING LESS 3.1)
 
 
 

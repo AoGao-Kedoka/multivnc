@@ -1,17 +1,14 @@
 
+#include "gui/bitmapFromMem.h"
+#include "gui/evtids.h"
 #include <fstream>
 #include <wx/aboutdlg.h>
 #include <wx/socket.h>
 #include <wx/clipbrd.h>
 #include <wx/imaglist.h>
-#if wxCHECK_VERSION(3, 1, 1)
 #include <wx/secretstore.h>
-#endif
 #include <wx/wfstream.h>
 #include <wx/txtstrm.h>
-#include "res/about.png.h"
-#include "res/unicast.png.h"
-#include "res/multicast.png.h"
 
 #include "MyFrameMain.h"
 #include "MyDialogSettings.h"
@@ -26,14 +23,12 @@ using namespace std;
 #define MULTIVNC_GRABKEYBOARD
 #endif
 
-#if wxCHECK_VERSION(3, 1, 5)
 #ifndef EVT_FULLSCREEN
 // workaround for missing EVT_FULLSCREEN
 #define wxFullScreenEventHandler(func) \
     wxEVENT_HANDLER_CAST(wxFullScreenEventFunction, func)
 typedef void (wxEvtHandler::*wxFullScreenEventFunction)(wxFullScreenEvent&);
 #define EVT_FULLSCREEN(func) wx__DECLARE_EVT0(wxEVT_FULLSCREEN, wxFullScreenEventHandler(func))
-#endif
 #endif
 
 // map recv of custom events to handler methods
@@ -53,9 +48,8 @@ BEGIN_EVENT_TABLE(MyFrameMain, FrameMain)
   EVT_COMMAND (wxID_ANY, VNCConnDisconnectNOTIFY, MyFrameMain::onVNCConnDisconnectNotify)
   EVT_COMMAND (wxID_ANY, VNCConnIncomingConnectionNOTIFY, MyFrameMain::onVNCConnIncomingConnectionNotify)
   EVT_END_PROCESS (ID_WINDOWSHARE_PROC_END, MyFrameMain::onWindowshareTerminate)
-#if wxCHECK_VERSION(3, 1, 5)
   EVT_FULLSCREEN (MyFrameMain::onFullScreenChanged)
-#endif
+  EVT_SYS_COLOUR_CHANGED(MyFrameMain::onSysColourChanged)
 END_EVENT_TABLE()
 
 
@@ -78,6 +72,7 @@ MyFrameMain::MyFrameMain(wxWindow* parent, int id, const wxString& title,
   pConfig->Read(K_SHOWBOOKMARKS, &show_bookmarks, V_SHOWBOOKMARKS);
   pConfig->Read(K_SHOWSTATS, &show_stats, V_SHOWSTATS);
   pConfig->Read(K_SHOWSEAMLESS, &show_seamless, V_SHOWSEAMLESS);
+  pConfig->Read(K_SHOW1TO1, &show_1to1, V_SHOW1TO1);
   pConfig->Read(K_GRABKEYBOARD, &grab_keyboard, V_GRABKEYBOARD);
   pConfig->Read(K_SIZE_X, &x, V_SIZE_X);
   pConfig->Read(K_SIZE_Y, &y, V_SIZE_Y);
@@ -96,14 +91,13 @@ MyFrameMain::MyFrameMain(wxWindow* parent, int id, const wxString& title,
   splitwin_main->SetMinimumPaneSize(160);
   splitwin_left->SetMinimumPaneSize(250);
   SetSize(x, y);
-#if wxCHECK_VERSION(3, 1, 0)
   EnableFullScreenView();
-#endif
+
 
   // assign image list to notebook_connections
   notebook_connections->AssignImageList(new wxImageList(24, 24));
-  notebook_connections->GetImageList()->Add(bitmapFromMem(unicast_png));
-  notebook_connections->GetImageList()->Add(bitmapFromMem(multicast_png));
+  notebook_connections->GetImageList()->Add(bitmapBundleFromSVGResource("unicast").GetBitmapFor(this));
+  notebook_connections->GetImageList()->Add(bitmapBundleFromSVGResource("multicast").GetBitmapFor(this));
 
 
   /*
@@ -162,7 +156,6 @@ MyFrameMain::MyFrameMain(wxWindow* parent, int id, const wxString& title,
   else
     {
       frame_main_toolbar->Show(false);
-      SetToolBar(NULL);
     }
 
 
@@ -194,6 +187,11 @@ MyFrameMain::MyFrameMain(wxWindow* parent, int id, const wxString& title,
     default:
       frame_main_menubar->Check(ID_SEAMLESS_DISABLED, true);
     }
+
+  if(show_1to1) {
+      frame_main_menubar->Check(ID_ONE_TO_ONE, true);
+      GetToolBar()->ToggleTool(ID_ONE_TO_ONE, true);
+  }
 
   // setup clipboard
 #ifdef __WXGTK__
@@ -239,11 +237,7 @@ MyFrameMain::~MyFrameMain()
   // the library would segfault while trying to delete the m_callbackUserData 
   // member of m_dynamicEvents
   if (m_dynamicEvents)
-#if wxCHECK_VERSION(3, 1, 0)
     for ( wxVector<wxDynamicEventTableEntry*>::iterator it = m_dynamicEvents->begin(),
-#else
-    for ( wxList::iterator it = m_dynamicEvents->begin(),
-#endif
 	    end = m_dynamicEvents->end();
 	  it != end;
 	  ++it )
@@ -406,13 +400,10 @@ void MyFrameMain::onVNCConnReplayFinishedNotify(wxCommandEvent& event)
 
   if(index < connections.size()) // found
     {
-      frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapFromMem(replay_png));
+      wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
+      frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapBundleFromSVGResource(prefix + "/" + "replay"));
+      frame_main_toolbar->FindById(ID_INPUT_REPLAY)->SetLabel(_("Replay Input"));
       frame_main_menubar->SetLabel(ID_INPUT_REPLAY, _("Replay Input"));
-      // remove and insert are necessary, otherwise label won't be updated
-      size_t pos = frame_main_toolbar->GetToolPos(ID_INPUT_REPLAY);
-      wxToolBarToolBase *button =  frame_main_toolbar->RemoveTool(ID_INPUT_REPLAY);
-      button->SetLabel(_("Replay Input"));
-      frame_main_toolbar->InsertTool(pos, button);
 
       // re-enable record buttons
       GetToolBar()->EnableTool(ID_INPUT_RECORD, true);
@@ -638,38 +629,70 @@ void MyFrameMain::onWindowshareTerminate(wxProcessEvent& event)
     }
 }
 
-#if wxCHECK_VERSION(3, 1, 5)
 void MyFrameMain::onFullScreenChanged(wxFullScreenEvent &event) {
     wxLogDebug("onFullScreenChanged %d", event.IsFullScreen());
-
     // update this here as well as it might have been triggered from the WM buttons outside of our control
     show_fullscreen = event.IsFullScreen();
-#else
-void MyFrameMain::onFullScreenChanged(bool isFullScreen) {
-    wxLogDebug("onFullScreenChanged %d", isFullScreen);
-#endif
+    wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
     if (show_fullscreen) {
 	// tick menu item
 	frame_main_menubar->Check(ID_FULLSCREEN, true);
-#ifndef __WXMAC__
-	// hide menu
+        GetToolBar()->SetToolNormalBitmap(ID_FULLSCREEN, bitmapBundleFromSVGResource(prefix + "/" + "restore"));
+#ifdef __WXMAC__
+        // only disable affected view items
+        frame_main_menubar->Enable(ID_BOOKMARKS, false);
+        frame_main_menubar->Enable(ID_DISCOVERED, false);
+#else
+        // hide whole menu
 	frame_main_menubar->Show(false);
 #endif
 	// hide bookmarks and discovered servers
 	show_bookmarks = show_discovered = false;
 	splitwinlayout();
+        // hide toolbar labels
+        GetToolBar()->SetWindowStyle(GetToolBar()->GetWindowStyle() & ~wxTB_TEXT);
+        // hide and unlink status bar
+        GetStatusBar()->Hide();
+        SetStatusBar(nullptr);
     } else {
 	// untick menu item
 	frame_main_menubar->Check(ID_FULLSCREEN, false);
-#ifndef __WXMAC__
-	// show menu
+        GetToolBar()->SetToolNormalBitmap(ID_FULLSCREEN, bitmapBundleFromSVGResource(prefix + "/" + "fullscreen"));
+#ifdef __WXMAC__
+        // only enable affected view items
+        frame_main_menubar->Enable(ID_BOOKMARKS, true);
+        frame_main_menubar->Enable(ID_DISCOVERED, true);
+#else
+        // show whole menu again
 	frame_main_menubar->Show(true);
 #endif
 	// restore bookmarks and discovered servers to saved state
 	wxConfigBase::Get()->Read(K_SHOWDISCOVERED, &show_discovered, V_SHOWDISCOVERED);
 	wxConfigBase::Get()->Read(K_SHOWBOOKMARKS, &show_bookmarks, V_SHOWBOOKMARKS);
 	splitwinlayout();
+        // show toolbar labels
+        GetToolBar()->SetWindowStyle(GetToolBar()->GetWindowStyle() | wxTB_TEXT);
+        // reattach and status bar
+        SetStatusBar(frame_main_statusbar);
+        GetStatusBar()->Show();
   }
+    // needed at least on MacOS to let the status bar re-appear correctly on restore
+    SendSizeEvent();
+}
+
+
+void MyFrameMain::onSysColourChanged(wxSysColourChangedEvent& event)
+{
+    wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
+    GetToolBar()->SetToolNormalBitmap(wxID_YES, bitmapBundleFromSVGResource(prefix + "/" + "connect"));
+    GetToolBar()->SetToolNormalBitmap(wxID_REDO, bitmapBundleFromSVGResource(prefix + "/"  + "listen"));
+    GetToolBar()->SetToolNormalBitmap(wxID_STOP, bitmapBundleFromSVGResource(prefix + "/" + "disconnect"));
+    GetToolBar()->SetToolNormalBitmap(ID_GRABKEYBOARD, bitmapBundleFromSVGResource(prefix + "/" + "toggle-keyboard-grab"));
+    GetToolBar()->SetToolNormalBitmap(wxID_SAVE, bitmapBundleFromSVGResource(prefix + "/" + "screenshot"));
+    GetToolBar()->SetToolNormalBitmap(ID_INPUT_RECORD, bitmapBundleFromSVGResource(prefix + "/" + "record"));
+    GetToolBar()->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapBundleFromSVGResource(prefix + "/" + "replay"));
+    GetToolBar()->SetToolNormalBitmap(ID_FULLSCREEN, bitmapBundleFromSVGResource(prefix + "/" + (show_fullscreen ? "restore" : "fullscreen")));
+    GetToolBar()->SetToolNormalBitmap(ID_ONE_TO_ONE, bitmapBundleFromSVGResource(prefix + "/" + "one-to-one"));
 }
 
 
@@ -890,6 +913,7 @@ void MyFrameMain::setup_conn(VNCConn *c) {
 
   ViewerWindow* win = new ViewerWindow(notebook_connections, c);
   win->showStats(show_stats);
+  win->showOneToOne(show_1to1);
 #ifdef MULTIVNC_GRABKEYBOARD
   win->grabKeyboard(frame_main_toolbar->GetToolState(ID_GRABKEYBOARD));
 #endif
@@ -1100,9 +1124,6 @@ void MyFrameMain::splitwinlayout()
 	}
     }
 }
-
-
-
 
 
 bool MyFrameMain::loadbookmarks()
@@ -1352,12 +1373,9 @@ void MyFrameMain::machine_input_record(wxCommandEvent &event)
 
       if(c->isRecording())
 	{
-	  frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_RECORD, bitmapFromMem(record_png));
-	  // remove and insert are necessary, otherwise label won't be updated
-	  size_t pos = frame_main_toolbar->GetToolPos(ID_INPUT_RECORD);
-	  wxToolBarToolBase *button =  frame_main_toolbar->RemoveTool(ID_INPUT_RECORD);
-	  button->SetLabel(_("Record Input"));
-	  frame_main_toolbar->InsertTool(pos, button);
+          wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
+	  frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_RECORD, bitmapBundleFromSVGResource(prefix + "/" + "record"));
+          frame_main_toolbar->FindById(ID_INPUT_RECORD)->SetLabel(_("Record Input"));
 	  
 	  wxArrayString recorded_input;
 	  
@@ -1414,13 +1432,10 @@ void MyFrameMain::machine_input_record(wxCommandEvent &event)
 
 	  if( c->recordUserInputStart()) 
 	    {
-	      frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_RECORD, bitmapFromMem(stop_png));
+              wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
+	      frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_RECORD, bitmapBundleFromSVGResource(prefix + "/" + "stop"));
+              frame_main_toolbar->FindById(ID_INPUT_RECORD)->SetLabel(_("Stop"));
 	      frame_main_menubar->SetLabel(ID_INPUT_RECORD, _("Stop Recording"));
-	      // remove and insert are necessary, otherwise label won't be updated
-	      size_t pos = frame_main_toolbar->GetToolPos(ID_INPUT_RECORD);
-	      wxToolBarToolBase *button =  frame_main_toolbar->RemoveTool(ID_INPUT_RECORD);
-	      button->SetLabel(_("Stop"));
-	      frame_main_toolbar->InsertTool(pos, button);
 
 	      wxLogStatus(_("Recording user input..."));
 
@@ -1451,13 +1466,10 @@ void MyFrameMain::machine_input_replay(wxCommandEvent &event)
 	{
 	  c->replayUserInputStop();
 
-	  frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapFromMem(replay_png));
+          wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
+	  frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapBundleFromSVGResource(prefix + "/" + "replay"));
+          frame_main_toolbar->FindById(ID_INPUT_REPLAY)->SetLabel(_("Replay Input"));
 	  frame_main_menubar->SetLabel(ID_INPUT_REPLAY,_("Replay Input"));
-	  // remove and insert are necessary, otherwise label won't be updated
-	  size_t pos = frame_main_toolbar->GetToolPos(ID_INPUT_REPLAY);
-	  wxToolBarToolBase *button =  frame_main_toolbar->RemoveTool(ID_INPUT_REPLAY);
-	  button->SetLabel(_("Replay Input"));
-	  frame_main_toolbar->InsertTool(pos, button);
 
 	  wxLogStatus(_("Stopped replaying user input!"));
 
@@ -1501,13 +1513,10 @@ void MyFrameMain::machine_input_replay(wxCommandEvent &event)
 	  // start replay
 	  if(c->replayUserInputStart(recorded_input, shift_was_down))
 	    {
-	      frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapFromMem(stop_png));
+              wxString prefix = wxSystemSettings::GetAppearance().IsDark() ? "dark" : "light";
+	      frame_main_toolbar->SetToolNormalBitmap(ID_INPUT_REPLAY, bitmapBundleFromSVGResource(prefix + "/" + "stop"));
 	      frame_main_menubar->SetLabel(ID_INPUT_REPLAY, _("Stop Replaying"));
-	      // remove and insert are necessary, otherwise label won't be updated
-	      size_t pos = frame_main_toolbar->GetToolPos(ID_INPUT_REPLAY);
-	      wxToolBarToolBase *button =  frame_main_toolbar->RemoveTool(ID_INPUT_REPLAY);
-	      button->SetLabel(_("Stop"));
-	      frame_main_toolbar->InsertTool(pos, button);
+              frame_main_toolbar->FindById(ID_INPUT_REPLAY)->SetLabel(_("Stop"));
 
 	      if(shift_was_down)
 		wxLogStatus(_("Replaying user input in loop..."));
@@ -1546,11 +1555,11 @@ void MyFrameMain::view_toggletoolbar(wxCommandEvent &event)
       frame_main_toolbar->EnableTool(wxID_STOP, enable); // disconnect
       frame_main_toolbar->EnableTool(wxID_SAVE, enable); // screenshot
       
-      SetToolBar(frame_main_toolbar);
+      frame_main_toolbar->Show();
     }
   else
     {
-      SetToolBar(NULL);
+        frame_main_toolbar->Hide();
     }
 
   // this does more than Layout() which only deals with sizers
@@ -1620,12 +1629,27 @@ void MyFrameMain::view_togglefullscreen(wxCommandEvent &event)
   // the event is not fired when using ShowFullScreen(), so manually do this here
   // (it is fired on OSX when entering fullscreen via the green button, so we need to
   // have the extra event handler).
-#if wxCHECK_VERSION(3, 1, 5)
   wxFullScreenEvent e = wxFullScreenEvent(0, show_fullscreen);
   onFullScreenChanged(e);
-#else
-  onFullScreenChanged(show_fullscreen);
-#endif
+}
+
+
+void MyFrameMain::view_toggle1to1(wxCommandEvent &event)
+{
+    show_1to1 = ! show_1to1;
+    wxLogDebug("view_toggle1to1 %d", show_1to1);
+
+    // keep toolbar and menu entries in sync
+    frame_main_menubar->Check(ID_ONE_TO_ONE, show_1to1);
+    GetToolBar()->ToggleTool(ID_ONE_TO_ONE, show_1to1);
+
+    // for now, toggle all connections
+    for(size_t i=0; i < connections.size(); ++i) {
+        connections.at(i).viewerwindow->showOneToOne(show_1to1);
+    }
+
+    wxConfigBase *pConfig = wxConfigBase::Get();
+    pConfig->Write(K_SHOW1TO1, show_1to1);
 }
 
 
@@ -1780,8 +1804,7 @@ void MyFrameMain::bookmarks_delete(wxCommandEvent &event)
 void MyFrameMain::help_about(wxCommandEvent &event)
 {	
   wxAboutDialogInfo info;
-  wxIcon icon;
-  icon.CopyFromBitmap(bitmapFromMem(about_png));
+  wxIcon icon = bitmapBundleFromSVGResource("about").GetIcon(this->FromDIP(wxSize(128,128)));
 
   wxString desc = "\n";
   desc += _("MultiVNC is a cross-platform Multicast-enabled VNC client.");
@@ -1794,7 +1817,7 @@ void MyFrameMain::help_about(wxCommandEvent &event)
 #if defined LIBVNCSERVER_HAVE_GNUTLS || defined LIBVNCSERVER_HAVE_LIBSSL
   desc += wxT(", Anonymous TLS, VeNCrypt");
 #endif
-#ifdef LIBVNCSERVER_HAVE_LIBGCRYPT
+#if defined LIBVNCSERVER_HAVE_LIBGCRYPT || defined LIBVNCSERVER_HAVE_LIBSSL
   desc += wxT(", Apple Remote Desktop");
 #endif
   desc += "\n\n";
@@ -1818,6 +1841,7 @@ void MyFrameMain::help_about(wxCommandEvent &event)
   info.SetCopyright(wxT(COPYRIGHT));
   info.AddDeveloper("Christian Beier");
   info.AddDeveloper("Evgeny Zinoviev");
+  info.AddDeveloper("Audrey Dutcher");
   
   wxAboutBox(info); 
 }

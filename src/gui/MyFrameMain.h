@@ -47,6 +47,7 @@ class MyFrameMain: public FrameMain
   bool show_stats;
   bool show_fullscreen;
   int  show_seamless;
+  bool show_1to1;
 
   // log window
   MyFrameLog* logwindow;
@@ -81,11 +82,8 @@ class MyFrameMain: public FrameMain
   void onVNCConnCuttextNotify(wxCommandEvent& event);
   void onVNCConnBellNotify(wxCommandEvent& event);
   void onSDNotify(wxCommandEvent& event);
-#if wxCHECK_VERSION(3, 1, 5)
   void onFullScreenChanged(wxFullScreenEvent &event);
-#else
-  void onFullScreenChanged(bool isFullScreen);
-#endif
+  void onSysColourChanged(wxSysColourChangedEvent& event);
 
   bool saveStats(VNCConn* c, int conn_index, const wxArrayString& stats, wxString desc, bool autosave);
 
@@ -126,6 +124,7 @@ public:
   void view_togglebookmarks(wxCommandEvent &event);
   void view_togglestatistics(wxCommandEvent &event);
   void view_togglefullscreen(wxCommandEvent &event);
+  void view_toggle1to1(wxCommandEvent &event);
   void view_seamless(wxCommandEvent &event);
 
   void bookmarks_add(wxCommandEvent &event); 

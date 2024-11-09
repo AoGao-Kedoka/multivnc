@@ -1,5 +1,31 @@
 # Version 2.1.x:
 
+## 2.1.8
+
+### 🛠  Fixes
+
+* Fix regression that caused failures when connecting VNC servers using encryption.
+* Fix race condition on start when init UI would be tried to show despite activity finishing.
+
+## 2.1.7
+
+### 🛠  Fixes
+
+* Fix another reported crash in screen drawing module.
+
+## 2.1.6
+
+### 🛠  Fixes
+
+* Fix reported crash in screen drawing module.
+
+## 2.1.5
+
+### 🛠  Fixes
+
+* Adapted to API level 34 as required by Google.
+* Fixed rare crash in service discovery module.
+
 ## 2.1.4
 
 ### 🛠  Fixes
